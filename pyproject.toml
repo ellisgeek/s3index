@@ -1,0 +1,25 @@
+[project]
+name = "s3index"
+version = "0.1.0"
+description = "A simple script to generate index files for S3 Buckets"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "humanize>=4.12.1",
+    "jinja2>=3.1.5",
+    "minio>=7.2.15",
+    "pydantic-settings>=2.8.1",
+    "yarl>=1.18.3",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9.9",
+]
+
+[tool.ruff]
+line-length=120
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+fixable = ["ALL"]
