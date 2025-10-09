@@ -1,35 +1,98 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="color-scheme" content="light dark">
-    <title>{{ bucket_nane }} - Index</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.indigo.min.css">
-  </head>
-  <body>
-    <main class="container">
-      <h1>{{ bucket_name }}</h1>
-      <table>
-        <thead>
-          <tr>
-            <td>Object</td>
-            <td>Size</td>
-            <td>Updated</td>
-            {# <td>Type</td> #}
-          </tr>
-        </thead>
-        <tbody>
-{% for obj in objects %}
-          <tr>
-            <td><a href="{{ obj.s3url }}"><code>{{ obj.path }}</code></a></td>
-            <td><code>{{ obj.bytes }} ({{ obj.size }})</code></td>
-            <td>{{ obj.last_modified }}</td>
-            {# <td>{{ obj.content_type }}</td> #}
-          </tr>
-{% endfor %}
-        </tbody>
-      </table>
-    </main>
-  </body>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Index of {{ current_dir or '/' }}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.indigo.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
+  <style>
+    code { white-space: pre; }
+    td, th { vertical-align: middle; }
+    a { text-decoration: none; }
+    time { white-space: nowrap; }
+  </style>
+</head>
+
+<body>
+  <main class="container">
+    <h1>Index of <code>{{ current_dir or '/' }}</code></h1>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Object</th>
+          <th>Size</th>
+          <th>Updated</th>
+          <th>Type</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if parent_link %}
+        <tr>
+          <td><a href="{{ parent_link }}"><code>../</code></a></td>
+          <td>-</td>
+          <td>-</td>
+          <td>Parent Directory</td>
+        </tr>
+        {% endif %}
+
+        {% for obj in objects %}
+        <tr>
+          <td>
+            <a href="{{ obj.link }}"><code>{{ obj.name }}{% if obj.is_dir %}/{% endif %}</code></a>
+          </td>
+          <td>
+            {% if obj.is_dir %}
+              <code>{{ obj.total_size }}</code>
+            {% else %}
+              <code>{{ obj.size }}</code>
+            {% endif %}
+          </td>
+          <td>
+            {% if obj.last_modified %}
+            <time class="utc-time" datetime="{{ obj.last_modified.isoformat() }}">
+              {{ obj.last_modified.isoformat() }}
+            </time>
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td>
+            {% if obj.is_dir %}
+              <em>directory</em>
+            {% elif obj.content_type %}
+              <code>{{ obj.content_type }}</code>
+            {% else %}
+              <em>unknown</em>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td>{{ objects | length }} item{{ '' if objects|length == 1 else 's' }}</td>
+          <td>{{ total_size }}</td>
+          <td></td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  </main>
+
+  <script>
+    document.querySelectorAll('time').forEach(el => {
+      const iso = el.getAttribute('datetime');
+      const dt = luxon.DateTime.fromISO(iso);
+      if (dt.isValid) {
+        el.textContent = dt.toLocal().toLocaleString(luxon.DateTime.DATETIME_MED);
+        el.title = dt.toUTC().toISO({ suppressMilliseconds: true, includeOffset: true });
+        }
+    });
+  </script>
+</body>
+
 </html>
