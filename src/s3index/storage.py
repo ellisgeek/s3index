@@ -1,6 +1,7 @@
 """Minio wrapper: listing, uploads, content-sniffing, and bucket/prefix browsing."""
 
 from io import BytesIO
+from pathlib import Path
 
 from minio import Minio
 from minio.datatypes import Bucket, Object
@@ -31,6 +32,13 @@ def upload_index(client: Minio, bucket_name: str, object_name: str, html: str) -
         length=len(raw.getvalue()),
         content_type="text/html",
     )
+
+
+def write_local_index(output_dir: Path, object_name: str, html: str) -> None:
+    """Write rendered directory-index HTML to a local file, mirroring the object path."""
+    path = output_dir / object_name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(html, encoding="utf-8")
 
 
 def list_buckets(client: Minio) -> list[Bucket]:

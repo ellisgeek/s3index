@@ -52,6 +52,11 @@ src/s3index/
 Each module is importable and unit-testable on its own. The layout isolates S3 I/O
 (`storage.py`) from pure tree and render logic (`models.py`, `render.py`).
 
+`scripts/` holds development-only tools, not part of the installed package.
+`dev_guard.py` blocks every Minio write method. `safe_run.py` runs the CLI with
+that guard installed. Use `safe_run.py` for manual testing against a real bucket, and
+`--dry-run` or `--output-dir` to avoid uploading at all.
+
 ## Conventions
 
 ### Versioning
