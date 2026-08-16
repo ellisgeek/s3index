@@ -3,9 +3,11 @@
 from unittest.mock import MagicMock
 
 from conftest import make_object
+from minio.error import S3Error
 
 from s3index.storage import (
     fetch_prefix_bytes,
+    get_remote_etag,
     list_all_objects,
     list_buckets,
     list_top_level_prefixes,
@@ -70,3 +72,17 @@ def test_list_top_level_prefixes_returns_only_directory_entries():
     result = list_top_level_prefixes(client, "bucket", "")
 
     assert result == ["dir/"]
+
+
+def test_get_remote_etag_returns_the_etag():
+    client = MagicMock()
+    client.stat_object.return_value.etag = "abc123"
+
+    assert get_remote_etag(client, "bucket", "index.html") == "abc123"
+
+
+def test_get_remote_etag_returns_none_when_object_is_missing():
+    client = MagicMock()
+    client.stat_object.side_effect = S3Error("NoSuchKey", "not found", None, None, None, MagicMock())
+
+    assert get_remote_etag(client, "bucket", "index.html") is None

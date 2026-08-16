@@ -1,5 +1,7 @@
 """Jinja2 environment setup and directory-index rendering."""
 
+import hashlib
+from enum import Enum
 from pathlib import Path
 
 from jinja2 import Environment, PackageLoader, Template, select_autoescape
@@ -7,7 +9,16 @@ from minio import Minio
 
 from s3index.models import S3Object
 from s3index.settings import Settings
-from s3index.storage import upload_index, write_local_index
+from s3index.storage import get_remote_etag, upload_index, write_local_index
+
+
+class RenderResult(Enum):
+    """What render_directory actually did with a rendered index."""
+
+    DRY_RUN = "dry-run"
+    WRITTEN = "written"
+    SKIPPED = "skipped"
+    UPLOADED = "uploaded"
 
 
 def build_environment() -> Environment:
@@ -29,13 +40,15 @@ def render_directory(
     client: Minio | None,
     dry_run: bool = False,
     output_dir: Path | None = None,
-) -> None:
+) -> RenderResult:
     """Render an index for a directory, then write it.
 
     With `dry_run`, nothing is written. With `output_dir` set, the index
-    is written to a local file instead of uploaded. Otherwise, it is
-    uploaded to the bucket. A failed upload raises MinioException or
-    HTTPError; the caller decides how to report it.
+    is written to a local file instead of uploaded. Otherwise, the index
+    uploads only if its content differs from what is already there,
+    compared by MD5 against the existing object's ETag. A failed upload
+    raises MinioException or HTTPError; the caller decides how to report
+    it. Returns what actually happened.
     """
     objects = sorted(dir_obj.children, key=lambda x: (not x.is_dir, x.name.lower()))
 
@@ -58,11 +71,15 @@ def render_directory(
     index_path = f"{dir_obj.path}/{settings.index_name}" if not is_root else settings.index_name
 
     if dry_run:
-        return
+        return RenderResult.DRY_RUN
 
     if output_dir is not None:
         write_local_index(output_dir, str(index_path), html)
-        return
+        return RenderResult.WRITTEN
 
     assert client is not None, "a real S3 upload needs a Minio client"
+    local_hash = hashlib.md5(html.encode(), usedforsecurity=False).hexdigest()
+    if get_remote_etag(client, settings.s3_bucket_name, str(index_path)) == local_hash:
+        return RenderResult.SKIPPED
     upload_index(client, settings.s3_bucket_name, str(index_path), html)
+    return RenderResult.UPLOADED

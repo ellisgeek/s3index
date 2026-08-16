@@ -1,5 +1,6 @@
 """Tests for render_directory in render.py."""
 
+import hashlib
 from pathlib import PurePosixPath
 from unittest.mock import MagicMock
 
@@ -52,3 +53,26 @@ def test_render_directory_root_uses_bucket_index_name(settings, template, tmp_pa
     render_directory(root, template, settings, client, output_dir=tmp_path)
 
     assert (tmp_path / "index.html").exists()
+
+
+def test_render_directory_uploads_when_remote_etag_differs(settings, template):
+    client = MagicMock()
+    client.stat_object.return_value.etag = "not-a-real-hash"
+
+    render_directory(make_dir(), template, settings, client)
+
+    client.put_object.assert_called_once()
+
+
+def test_render_directory_skips_upload_when_content_is_unchanged(settings, template):
+    client = MagicMock()
+    render_directory(make_dir(), template, settings, client)
+    uploaded_html = client.put_object.call_args.args[2].getvalue().decode()
+    matching_etag = hashlib.md5(uploaded_html.encode(), usedforsecurity=False).hexdigest()
+    client.reset_mock()
+    client.stat_object.return_value.etag = matching_etag
+
+    render_directory(make_dir(), template, settings, client)
+
+    client.put_object.assert_not_called()
+    client.stat_object.assert_called_once()

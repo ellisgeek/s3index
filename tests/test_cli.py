@@ -7,9 +7,9 @@ import pytest
 import typer
 from minio.error import S3Error
 
-from s3index.cli import render_all
+from s3index.cli import render_all, summarize_results
 from s3index.models import S3Object
-from s3index.render import build_environment
+from s3index.render import RenderResult, build_environment
 
 
 @pytest.fixture
@@ -39,6 +39,20 @@ def test_render_all_uploads_every_directory_when_none_fail(settings, template):
     dirs = make_dirs(5)
 
     with patch("s3index.render.upload_index") as mock_upload:
-        render_all(dirs, template, settings, client=MagicMock(), dry_run=False, output_dir=None)
+        results = render_all(dirs, template, settings, client=MagicMock(), dry_run=False, output_dir=None)
 
     assert mock_upload.call_count == 5
+    assert results == [RenderResult.UPLOADED] * 5
+
+
+def test_summarize_results_reports_dry_run():
+    assert summarize_results([RenderResult.DRY_RUN] * 3) == "Would write 3 indexes."
+
+
+def test_summarize_results_reports_local_write():
+    assert summarize_results([RenderResult.WRITTEN] * 4) == "Wrote 4 indexes."
+
+
+def test_summarize_results_reports_uploaded_and_skipped_counts():
+    results = [RenderResult.UPLOADED] * 2 + [RenderResult.SKIPPED] * 3
+    assert summarize_results(results) == "Uploaded 2 indexes, skipped 3 unchanged."

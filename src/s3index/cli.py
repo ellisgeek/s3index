@@ -1,5 +1,6 @@
 """Orchestrates listing S3 objects and generating directory-index pages."""
 
+from collections import Counter
 from collections.abc import Collection
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path, PurePosixPath
@@ -15,7 +16,7 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, T
 from urllib3.exceptions import HTTPError
 
 from s3index.models import S3Object, build_tree, resolve_content_types
-from s3index.render import build_environment, render_directory
+from s3index.render import RenderResult, build_environment, render_directory
 from s3index.settings import Settings
 from s3index.storage import list_all_objects
 
@@ -44,12 +45,13 @@ def render_all(
     client: Optional[Minio],
     dry_run: bool,
     output_dir: Optional[Path],
-) -> None:
+) -> list[RenderResult]:
     """Render each directory index concurrently, with a progress bar.
 
     Stops scheduling new uploads as soon as one fails, reports it, and
-    exits.
+    exits. Returns what happened to each index.
     """
+    results: list[RenderResult] = []
     with ThreadPoolExecutor() as executor, _progress() as progress:
         task = progress.add_task("Rendering indexes...", total=len(dir_objs))
         futures = {
@@ -58,7 +60,7 @@ def render_all(
         }
         for future in as_completed(futures):
             try:
-                future.result()
+                results.append(future.result())
             except (MinioException, HTTPError) as e:
                 dir_obj = futures[future]
                 for f in futures:
@@ -67,6 +69,17 @@ def render_all(
                 error_console.print(f"[red]Error:[/red] failed to upload index for {dir_obj.path or '/'}: {e}")
                 raise typer.Exit(code=EXIT_S3_ERROR) from e
             progress.advance(task)
+    return results
+
+
+def summarize_results(results: list[RenderResult]) -> str:
+    """Describe what happened across a batch of render results, as one line."""
+    counts = Counter(results)
+    if counts[RenderResult.DRY_RUN]:
+        return f"Would write {counts[RenderResult.DRY_RUN]} indexes."
+    if counts[RenderResult.WRITTEN]:
+        return f"Wrote {counts[RenderResult.WRITTEN]} indexes."
+    return f"Uploaded {counts[RenderResult.UPLOADED]} indexes, skipped {counts[RenderResult.SKIPPED]} unchanged."
 
 
 @app.command()
@@ -137,29 +150,23 @@ def main(
     for dir_obj in dirs.values():
         dir_obj.compute_totals()
 
-    render_all(dirs.values(), tmpl, settings, client, dry_run, output_dir)
-
     if settings.s3_bucket_prefix:
-        try:
-            root_dir = dirs[PurePosixPath(settings.s3_bucket_prefix)]
-        except KeyError as e:
+        if PurePosixPath(settings.s3_bucket_prefix) not in dirs:
             error_console.print(
                 f"[red]Error:[/red] configured S3_BUCKET_PREFIX {settings.s3_bucket_prefix!r} "
                 "not found among listed objects."
             )
-            raise typer.Exit(code=EXIT_S3_ERROR) from e
+            raise typer.Exit(code=EXIT_S3_ERROR)
+        render_targets = list(dirs.values())
     else:
         root_dir = S3Object(PurePosixPath("."), name="/", parent=PurePosixPath(""), is_dir=True)
         root_dir.children = [x for x in all_entries.values() if x.parent == PurePosixPath(".")]
         _ = root_dir.compute_totals()
+        render_targets = [*dirs.values(), root_dir]
 
-    try:
-        render_directory(root_dir, tmpl, settings, client, dry_run, output_dir)
-    except (MinioException, HTTPError) as e:
-        error_console.print(f"[red]Error:[/red] failed to upload index for {root_dir.path or '/'}: {e}")
-        raise typer.Exit(code=EXIT_S3_ERROR) from e
+    results = render_all(render_targets, tmpl, settings, client, dry_run, output_dir)
 
-    console.print("All directory indexes generated successfully.")
+    console.print(summarize_results(results))
 
 
 if __name__ == "__main__":

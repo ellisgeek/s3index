@@ -5,6 +5,8 @@ from pathlib import Path
 
 from minio import Minio
 from minio.datatypes import Bucket, Object
+from minio.error import MinioException
+from urllib3.exceptions import HTTPError
 
 
 def list_all_objects(client: Minio, bucket_name: str, prefix: str) -> list[Object]:
@@ -20,6 +22,18 @@ def fetch_prefix_bytes(client: Minio, bucket_name: str, object_name: str, length
     finally:
         response.close()
         response.release_conn()
+
+
+def get_remote_etag(client: Minio, bucket_name: str, object_name: str) -> str | None:
+    """Get an existing object's ETag, or None if it cannot be determined.
+
+    A missing object, a permissions error, or a connection failure all
+    return None here, so the caller falls back to uploading.
+    """
+    try:
+        return client.stat_object(bucket_name, object_name).etag
+    except (MinioException, HTTPError):
+        return None
 
 
 def upload_index(client: Minio, bucket_name: str, object_name: str, html: str) -> None:
