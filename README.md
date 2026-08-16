@@ -58,6 +58,10 @@ during development.
 2. `uv run just release` bumps the version, commits, and tags the release.
    Versions follow CalVer (`YYYY.MM.MICRO`); `micro` resets to `0`
    automatically at the start of a new month.
+3. `git push --follow-tags` pushes the commit and the new tag.
+
+Pushing a `v*` tag triggers the release workflow, which builds the sdist and
+wheel and publishes them to a GitHub Release.
 
 GitHub Actions runs `just lint`, `just test` (on Python 3.10 and 3.13), and
-`just build`/`just smoke` on every push to `main` and every pull request.
+`just smoke` on every push to `main` and every pull request.
