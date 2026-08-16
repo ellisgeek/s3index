@@ -50,6 +50,6 @@ def list_top_level_prefixes(client: Minio, bucket_name: str, prefix: str = "") -
     """List the immediate subdirectory prefixes under `prefix` in a bucket."""
     return [
         obj.object_name
-        for obj in client.list_objects(bucket_name, prefix=prefix, delimiter="/")
+        for obj in client.list_objects(bucket_name, prefix=prefix, recursive=False)
         if obj.object_name and obj.is_dir
     ]

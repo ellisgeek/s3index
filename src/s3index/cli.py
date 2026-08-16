@@ -88,7 +88,7 @@ def main(
         raise typer.Exit(code=EXIT_CONFIG_ERROR)
 
     try:
-        settings = Settings(_env_file=env_file) if env_file else Settings()  # type: ignore
+        settings = Settings(_env_file=env_file) if env_file else Settings()
     except ValidationError as e:
         missing = [str(err["loc"][0]).upper() for err in e.errors() if err["type"] == "missing"]
         if missing:

@@ -38,16 +38,18 @@ class S3Object:
     _bucket_prefix: str = field(default="", repr=False, compare=False)
 
     @classmethod
-    def from_minio(cls, obj: Object, settings: Settings, client: Minio) -> "S3Object":
+    def from_minio(cls, obj: Object, settings: Settings, client: Minio | None) -> "S3Object":
         """Build an S3Object from a minio listing entry."""
+        assert obj.object_name is not None, "listing entry has no object name"
         path = PurePosixPath(obj.object_name)
+        size = obj.size or 0
         s3url = URL(f"{settings.s3_scheme}://{settings.s3_endpoint}") / settings.s3_bucket_name / str(path)
         return cls(
             path=path,
             name=path.name or "/",
             parent=path.parent,
-            bytes=obj.size,
-            size=naturalsize(obj.size),
+            bytes=size,
+            size=naturalsize(size),
             last_modified=obj.last_modified,
             s3url=s3url,
             is_dir=False,
@@ -76,7 +78,7 @@ class S3Object:
 
 
 def build_tree(
-    all_objects: list[Object], settings: Settings, client: Minio
+    all_objects: list[Object], settings: Settings, client: Minio | None
 ) -> tuple[dict[PurePosixPath, S3Object], dict[PurePosixPath, S3Object]]:
     """Build the object tree, including virtual directories, from a minio listing.
 
