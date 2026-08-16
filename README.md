@@ -6,9 +6,10 @@ S3-compatible bucket.
 ## Usage
 
 - Clone the repository.
+- Run `uv tool install .` to install the `s3index` command.
 - Copy `default.env` to `.env` and set the S3 connection details.
-- Run `uv run s3index.py --help` to see the available flags.
-- Run `uv run s3index.py` to generate and upload the indexes.
+- Run `s3index --help` to see the available flags.
+- Run `s3index` to generate and upload the indexes.
 
 Use `--dry-run` to build and render the indexes without writing them
 anywhere, or `--output-dir <path>` to write them to a local directory
@@ -43,7 +44,7 @@ uv run pytest
 
 `scripts/safe_run.py` runs the CLI with every Minio write method blocked, for
 manual testing against a real bucket without risking a real upload. Prefer it
-over running `s3index.py` directly during development.
+over running `uv run python3 -m s3index` directly during development.
 
 ### Releasing
 
@@ -54,5 +55,4 @@ over running `s3index.py` directly during development.
 
 ## TODOs
 
-- Packaging: installable entrypoint (`uv tool install .`), instead of `uv run s3index.py`.
 - CI/CD: run the checks above on every push and pull request.

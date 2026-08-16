@@ -17,6 +17,16 @@ dependencies = [
     "yarl>=1.18.3",
 ]
 
+[project.scripts]
+s3index = "s3index:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/s3index"]
+
 [dependency-groups]
 dev = [
     "bump-my-version>=1.5.1",
@@ -34,6 +44,7 @@ addopts = "--cov=s3index --cov-report=term-missing --cov-fail-under=100"
 
 [tool.coverage.run]
 source = ["src/s3index"]
+omit = ["src/s3index/__main__.py"]
 
 [tool.coverage.report]
 exclude_lines = [

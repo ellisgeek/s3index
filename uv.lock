@@ -1293,7 +1293,7 @@ wheels = [
 [[package]]
 name = "s3index"
 version = "2026.8.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "humanize" },
     { name = "jinja2" },

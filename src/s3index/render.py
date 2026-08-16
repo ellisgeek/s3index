@@ -22,13 +22,9 @@ class RenderResult(Enum):
 
 
 def build_environment() -> Environment:
-    """Build the Jinja2 environment that loads templates from the package.
-
-    `package_path` points at the repo-root `templates/` directory, since
-    that directory does not live under `src/s3index/` yet.
-    """
+    """Build the Jinja2 environment that loads templates from the package."""
     return Environment(
-        loader=PackageLoader("s3index", package_path="../../templates"),
+        loader=PackageLoader("s3index"),
         autoescape=select_autoescape(),
     )
 

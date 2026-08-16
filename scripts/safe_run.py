@@ -1,8 +1,8 @@
 """Entrypoint for manual testing: every real S3 write is blocked.
 
-Run this instead of s3index.py while developing. Any write attempt raises
-BlockedWriteError; pass --output-dir for local mode, or --dry-run to
-preview without writing anywhere.
+Run this instead of the installed `s3index` command while developing.
+Any write attempt raises BlockedWriteError; pass --output-dir for local
+mode, or --dry-run to preview without writing anywhere.
 """
 
 import sys
