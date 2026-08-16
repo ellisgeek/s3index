@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from io import BytesIO
 from pathlib import PurePosixPath
-from typing import Dict, List, Optional
 
 from humanize import naturalsize
 from jinja2 import Environment, PackageLoader, select_autoescape
@@ -22,12 +21,12 @@ class Settings(BaseSettings):
     s3_access_key: str = Field()
     s3_secret_key: str = Field()
     s3_scheme: str = Field(default="https")
-    template: Optional[str] = Field(default=None)
+    template: str | None = Field(default=None)
     index_name: str = Field(default="index.html")
 
 
 def main():
-    settings = Settings()
+    settings = Settings()  # type: ignore
 
     client = Minio(
         str(settings.s3_endpoint),
@@ -40,7 +39,6 @@ def main():
         autoescape=select_autoescape(),
     )
 
-
     @dataclass
     class S3Object:
         path: PurePosixPath
@@ -48,11 +46,11 @@ def main():
         parent: PurePosixPath
         bytes: int = 0
         size: str = "0 B"
-        last_modified: Optional[datetime] = None
-        s3url: Optional[URL] = None
+        last_modified: datetime | None = None
+        s3url: URL | None = None
         is_dir: bool = False
-        children: List["S3Object"] = field(default_factory=list)
-        _content_type: Optional[str] = field(default=None, init=False, repr=False)
+        children: list["S3Object"] = field(default_factory=list)
+        _content_type: str | None = field(default=None, init=False, repr=False)
         total_bytes: int = 0
         total_size: str = "0 B"
 
@@ -117,7 +115,7 @@ def main():
     all_objects = list(client.list_objects(settings.s3_bucket_name, settings.s3_bucket_prefix, recursive=True))
 
     # Map paths to S3Objects
-    objects_by_path: Dict[PurePosixPath, S3Object] = {}
+    objects_by_path: dict[PurePosixPath, S3Object] = {}
 
     for obj in all_objects:
         s3obj = S3Object.from_minio(obj)
@@ -126,7 +124,7 @@ def main():
         objects_by_path[s3obj.path] = s3obj
 
     # Add virtual directories
-    dirs: Dict[PurePosixPath, S3Object] = {}
+    dirs: dict[PurePosixPath, S3Object] = {}
     for path in list(objects_by_path.keys()):
         for parent in path.parents:
             if parent == PurePosixPath("."):
@@ -159,7 +157,9 @@ def main():
         objects = sorted(dir_obj.children, key=lambda x: (not x.is_dir, x.name.lower()))
 
         # Determine if this directory is the logical root
-        is_root = str(dir_obj.path).rstrip("/") == str(settings.s3_bucket_prefix).rstrip("/") or str(dir_obj.path) == "."
+        is_root = (
+            str(dir_obj.path).rstrip("/") == str(settings.s3_bucket_prefix).rstrip("/") or str(dir_obj.path) == "."
+        )
 
         parent_link = None if is_root else "../index.html"
 
@@ -175,15 +175,11 @@ def main():
         )
 
         raw = BytesIO(html.encode())
-        index_path = (
-            f"{dir_obj.path}/{settings.index_name}"
-            if not is_root
-            else settings.index_name
-        )
+        index_path = f"{dir_obj.path}/{settings.index_name}" if not is_root else settings.index_name
 
         print(f"Uploading index for {dir_obj.path or '/'} → {index_path}")
 
-        client.put_object(
+        _ = client.put_object(
             settings.s3_bucket_name,
             str(index_path),
             raw,
@@ -197,11 +193,14 @@ def main():
 
     # Root directory
     if settings.s3_bucket_prefix:
-        root_dir = dirs.get(PurePosixPath(settings.s3_bucket_prefix))
+        try:
+            root_dir = dirs[PurePosixPath(settings.s3_bucket_prefix)]
+        except KeyError as e:
+            raise e
     else:
         root_dir = S3Object(PurePosixPath("."), name="/", parent=PurePosixPath(""), is_dir=True)
         root_dir.children = [x for x in all_entries.values() if x.parent == PurePosixPath(".")]
-        root_dir.compute_totals()
+        _ = root_dir.compute_totals()
 
     render_directory(root_dir)
 

@@ -3,7 +3,7 @@ name = "s3index"
 version = "0.1.0"
 description = "A simple script to generate index files for S3 Buckets"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10, <3.14"
 dependencies = [
     "humanize>=4.12.1",
     "jinja2>=3.1.5",
