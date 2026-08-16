@@ -65,4 +65,5 @@ Pushing a `v*` tag triggers the release workflow, which builds the sdist and
 wheel and publishes them to a GitHub Release.
 
 GitHub Actions runs `just lint`, `just test` (on Python 3.10 and 3.13), and
-`just smoke` on every push to `main` and every pull request.
+`just smoke` on every push to `main` and every pull request. Each test run
+publishes a test result summary and a coverage report to the job summary.
