@@ -1,5 +1,8 @@
 """S3Object dataclass and tree-building for the object listing."""
 
+import mimetypes
+from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import PurePosixPath
@@ -29,10 +32,10 @@ class S3Object:
     children: list["S3Object"] = field(default_factory=list)
     total_bytes: int = 0
     total_size: str = "0 B"
+    content_type: str | None = field(default=None)
     _client: Minio | None = field(default=None, repr=False, compare=False)
     _bucket_name: str = field(default="", repr=False, compare=False)
     _bucket_prefix: str = field(default="", repr=False, compare=False)
-    _content_type: str | None = field(default=None, init=False, repr=False)
 
     @classmethod
     def from_minio(cls, obj: Object, settings: Settings, client: Minio) -> "S3Object":
@@ -61,25 +64,6 @@ class S3Object:
     @property
     def link(self) -> str:
         return f"{self.name}/index.html" if self.is_dir else self.name
-
-    @property
-    def content_type(self) -> str:
-        if self.is_dir:
-            return "directory"
-        if self._content_type:
-            return self._content_type
-        if self._client is None:
-            self._content_type = "unknown"
-            return self._content_type
-
-        try:
-            data = fetch_prefix_bytes(self._client, self._bucket_name, str(self.path))
-            magika = Magika()
-            result = magika.identify_bytes(data)
-            self._content_type = result.output.mime_type if result and result.output else "application/octet-stream"
-        except (MinioException, HTTPError):
-            self._content_type = "unknown"
-        return self._content_type
 
     def compute_totals(self) -> int:
         """Recursively compute total bytes for this object and its children."""
@@ -127,3 +111,42 @@ def build_tree(
             all_entries[obj.parent].children.append(obj)
 
     return dirs, all_entries
+
+
+def resolve_content_types(objects: Iterable[S3Object]) -> None:
+    """Resolve `content_type` for every file object in `objects`.
+
+    Tries the file extension first. For a file whose extension does not
+    map to a known MIME type, sniffs the content with Magika instead,
+    fetching each such file concurrently.
+    """
+    unresolved: list[S3Object] = []
+    for obj in objects:
+        if obj.is_dir:
+            continue
+        guess, _ = mimetypes.guess_type(obj.name)
+        if guess:
+            obj.content_type = guess
+        else:
+            unresolved.append(obj)
+
+    if not unresolved:
+        return
+
+    magika = Magika()
+    with ThreadPoolExecutor() as executor:
+        futures = {executor.submit(_sniff_content_type, obj, magika): obj for obj in unresolved}
+        for future in as_completed(futures):
+            futures[future].content_type = future.result()
+
+
+def _sniff_content_type(obj: S3Object, magika: Magika) -> str:
+    """Sniff a file's content type from its first bytes, via a ranged GET."""
+    if obj._client is None:
+        return "unknown"
+    try:
+        data = fetch_prefix_bytes(obj._client, obj._bucket_name, str(obj.path))
+        result = magika.identify_bytes(data)
+        return result.output.mime_type if result and result.output else "application/octet-stream"
+    except (MinioException, HTTPError):
+        return "unknown"
