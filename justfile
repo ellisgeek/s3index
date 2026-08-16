@@ -37,10 +37,11 @@ smoke: build
 safe-run *args:
     python3 scripts/safe_run.py {{ args }}
 
-# Regenerate CHANGELOG.md from Conventional Commit history.
+# Regenerate CHANGELOG.md from Conventional Commit history and stage it.
 changelog:
     cz changelog
+    git add CHANGELOG.md
 
 # Bump the CalVer version, commit, and tag the release.
 release: changelog
-    bump-my-version bump micro
+    bump-my-version bump micro --allow-dirty
