@@ -29,7 +29,9 @@ that change.
 - `prek`: git hook runner (drop-in `pre-commit` replacement).
 - `commitizen`: Conventional Commits enforcement and changelog generation.
 - `bump-my-version`: CalVer version bumping.
-- `pytest`: tests.
+- `pytest`, `pytest-cov`: tests and coverage.
+- `rust-just`: provides the `just` task runner, the shared entrypoint for
+  local development and CI commands.
 
 ### Build
 

@@ -22,11 +22,17 @@ Credentials are never prompted for; set them in `.env` first.
 
 ## Development
 
+[`just`](https://github.com/casey/just) is the task runner for this project.
+It is a `uv` dev dependency, so run recipes as `uv run just <recipe>`, or
+install `just` yourself (`cargo install just`, `brew install just`, etc.) to
+drop the `uv run` prefix. Run `just` with no arguments to list recipes; the
+same recipes back both local development and CI, so there is one place to
+change a command.
+
 Install the git hooks once, after cloning:
 
 ```
-uv run prek install
-uv run prek install --hook-type commit-msg
+uv run just install-hooks
 ```
 
 This runs ruff, `ty check`, and a few housekeeping checks before each
@@ -35,23 +41,23 @@ commit, and checks that commit messages follow
 commit is finalized. Run the full check suite by hand with:
 
 ```
-uv run prek run --all-files
-uv run ty check
-uv run pytest
+uv run just check
 ```
 
-`pytest` also reports coverage and fails if it drops below 100%.
+`just test` reports coverage and fails if it drops below 100%.
 
 `scripts/safe_run.py` runs the CLI with every Minio write method blocked, for
-manual testing against a real bucket without risking a real upload. Prefer it
-over running `uv run python3 -m s3index` directly during development.
+manual testing against a real bucket without risking a real upload. Prefer
+`uv run just safe-run` over running `uv run python3 -m s3index` directly
+during development.
 
 ### Releasing
 
-1. `uv run cz changelog`, then review and commit the updated `CHANGELOG.md`.
-2. `uv run bump-my-version bump micro` bumps the version, commits, and tags
-   the release. Versions follow CalVer (`YYYY.MM.MICRO`); `micro` resets to
-   `0` automatically at the start of a new month.
+1. `uv run just changelog`, then review and commit the updated
+   `CHANGELOG.md`.
+2. `uv run just release` bumps the version, commits, and tags the release.
+   Versions follow CalVer (`YYYY.MM.MICRO`); `micro` resets to `0`
+   automatically at the start of a new month.
 
 ## TODOs
 
