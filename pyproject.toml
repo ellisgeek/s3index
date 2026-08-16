@@ -22,12 +22,22 @@ dev = [
     "commitizen>=4.17.0",
     "prek>=0.4.13",
     "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
     "ruff>=0.16.3",
     "ty>=0.0.72",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+addopts = "--cov=s3index --cov-report=term-missing --cov-fail-under=100"
+
+[tool.coverage.run]
+source = ["src/s3index"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "if __name__ == .__main__.:",
+]
 
 [tool.ruff]
 line-length=120

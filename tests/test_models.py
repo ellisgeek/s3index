@@ -1,11 +1,12 @@
 """Tests for S3Object and tree-building in models.py."""
 
 from pathlib import PurePosixPath
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from conftest import make_object
+from minio.error import S3Error
 
-from s3index.models import S3Object, build_tree, resolve_content_types
+from s3index.models import S3Object, _sniff_content_type, build_tree, resolve_content_types
 
 
 def test_from_minio_sets_path_name_and_parent(settings):
@@ -127,3 +128,43 @@ def test_resolve_content_types_reports_progress_once_per_file():
     resolve_content_types(objs, on_progress=lambda: calls.append(1))
 
     assert len(calls) == 3
+
+
+def test_resolve_content_types_reports_progress_for_sniffed_files_too():
+    client = MagicMock()
+    client.get_object.return_value.read.return_value = b"hello world"
+    obj = S3Object(
+        path=PurePosixPath("a.weirdext"),
+        name="a.weirdext",
+        parent=PurePosixPath("."),
+        _client=client,
+        _bucket_name="test-bucket",
+    )
+    calls = []
+
+    resolve_content_types([obj], on_progress=lambda: calls.append(1))
+
+    assert len(calls) == 1
+
+
+def test_sniff_content_type_returns_unknown_without_a_client():
+    obj = S3Object(path=PurePosixPath("a.weirdext"), name="a.weirdext", parent=PurePosixPath("."), _client=None)
+
+    assert _sniff_content_type(obj, MagicMock()) == "unknown"
+
+
+def test_sniff_content_type_returns_unknown_on_fetch_error():
+    client = MagicMock()
+    obj = S3Object(
+        path=PurePosixPath("a.weirdext"),
+        name="a.weirdext",
+        parent=PurePosixPath("."),
+        _client=client,
+        _bucket_name="test-bucket",
+    )
+
+    with patch(
+        "s3index.models.fetch_prefix_bytes",
+        side_effect=S3Error("AccessDenied", "not entitled", None, None, None, MagicMock()),
+    ):
+        assert _sniff_content_type(obj, MagicMock()) == "unknown"

@@ -34,6 +34,8 @@ uv run ty check
 uv run pytest
 ```
 
+`pytest` also reports coverage and fails if it drops below 100%.
+
 `scripts/safe_run.py` runs the CLI with every Minio write method blocked, for
 manual testing against a real bucket without risking a real upload. Prefer it
 over running `s3index.py` directly during development.
