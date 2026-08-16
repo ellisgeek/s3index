@@ -1,7 +1,7 @@
 """S3Object dataclass and tree-building for the object listing."""
 
 import mimetypes
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -113,12 +113,13 @@ def build_tree(
     return dirs, all_entries
 
 
-def resolve_content_types(objects: Iterable[S3Object]) -> None:
+def resolve_content_types(objects: Iterable[S3Object], on_progress: Callable[[], None] | None = None) -> None:
     """Resolve `content_type` for every file object in `objects`.
 
     Tries the file extension first. For a file whose extension does not
     map to a known MIME type, sniffs the content with Magika instead,
-    fetching each such file concurrently.
+    fetching each such file concurrently. Calls `on_progress` once per
+    file, as each one resolves.
     """
     unresolved: list[S3Object] = []
     for obj in objects:
@@ -127,6 +128,8 @@ def resolve_content_types(objects: Iterable[S3Object]) -> None:
         guess, _ = mimetypes.guess_type(obj.name)
         if guess:
             obj.content_type = guess
+            if on_progress:
+                on_progress()
         else:
             unresolved.append(obj)
 
@@ -138,6 +141,8 @@ def resolve_content_types(objects: Iterable[S3Object]) -> None:
         futures = {executor.submit(_sniff_content_type, obj, magika): obj for obj in unresolved}
         for future in as_completed(futures):
             futures[future].content_type = future.result()
+            if on_progress:
+                on_progress()
 
 
 def _sniff_content_type(obj: S3Object, magika: Magika) -> str:

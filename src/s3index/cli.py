@@ -1,6 +1,6 @@
 """Orchestrates listing S3 objects and generating directory-index pages."""
 
-from collections.abc import Iterable
+from collections.abc import Collection
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path, PurePosixPath
 from typing import Annotated, Optional
@@ -10,32 +10,48 @@ from jinja2 import Template
 from minio import Minio
 from minio.error import MinioException
 from pydantic import ValidationError
+from rich.console import Console
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 from urllib3.exceptions import HTTPError
 
 from s3index.models import S3Object, build_tree, resolve_content_types
-from s3index.render import EXIT_S3_ERROR, build_environment, render_directory
+from s3index.render import build_environment, render_directory
 from s3index.settings import Settings
 from s3index.storage import list_all_objects
 
 EXIT_CONFIG_ERROR = 1
+EXIT_S3_ERROR = 2
 
-app = typer.Typer()
+app = typer.Typer(pretty_exceptions_enable=False)
+console = Console()
+error_console = Console(stderr=True)
+
+
+def _progress() -> Progress:
+    return Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        console=console,
+    )
 
 
 def render_all(
-    dir_objs: Iterable[S3Object],
+    dir_objs: Collection[S3Object],
     template: Template,
     settings: Settings,
     client: Minio,
     dry_run: bool,
     output_dir: Optional[Path],
 ) -> None:
-    """Render each directory index concurrently.
+    """Render each directory index concurrently, with a progress bar.
 
-    Stops scheduling new uploads as soon as one fails, and re-raises that
-    failure's error from the main thread.
+    Stops scheduling new uploads as soon as one fails, reports it, and
+    exits.
     """
-    with ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor() as executor, _progress() as progress:
+        task = progress.add_task("Rendering indexes...", total=len(dir_objs))
         futures = {
             executor.submit(render_directory, obj, template, settings, client, dry_run, output_dir): obj
             for obj in dir_objs
@@ -43,10 +59,13 @@ def render_all(
         for future in as_completed(futures):
             try:
                 future.result()
-            except typer.Exit:
+            except (MinioException, HTTPError) as e:
+                dir_obj = futures[future]
+                error_console.print(f"[red]Error:[/red] failed to upload index for {dir_obj.path or '/'}: {e}")
                 for f in futures:
                     f.cancel()
-                raise
+                raise typer.Exit(code=EXIT_S3_ERROR) from e
+            progress.advance(task)
 
 
 @app.command()
@@ -65,7 +84,7 @@ def main(
 ) -> None:
     """Generate static HTML directory-index pages for an S3-compatible bucket."""
     if dry_run and output_dir is not None:
-        typer.echo("Error: --dry-run and --output-dir cannot be used together.", err=True)
+        error_console.print("[red]Error:[/red] --dry-run and --output-dir cannot be used together.")
         raise typer.Exit(code=EXIT_CONFIG_ERROR)
 
     try:
@@ -73,9 +92,9 @@ def main(
     except ValidationError as e:
         missing = [str(err["loc"][0]).upper() for err in e.errors() if err["type"] == "missing"]
         if missing:
-            typer.echo(f"Error: missing config: {', '.join(missing)}", err=True)
+            error_console.print(f"[red]Error:[/red] missing config: {', '.join(missing)}")
         else:
-            typer.echo(f"Error: invalid config: {e}", err=True)
+            error_console.print(f"[red]Error:[/red] invalid config: {e}")
         raise typer.Exit(code=EXIT_CONFIG_ERROR) from e
 
     overrides = {
@@ -99,19 +118,21 @@ def main(
     env = build_environment()
     tmpl = env.get_template(settings.template or "default.html")
 
-    print("Listing S3 objects...")
+    console.print("Listing S3 objects...")
     try:
         all_objects = list_all_objects(client, settings.s3_bucket_name, settings.s3_bucket_prefix)
     except (MinioException, HTTPError) as e:
-        typer.echo(f"Error: could not list objects in bucket '{settings.s3_bucket_name}': {e}", err=True)
+        error_console.print(f"[red]Error:[/red] could not list objects in bucket '{settings.s3_bucket_name}': {e}")
         raise typer.Exit(code=EXIT_S3_ERROR) from e
 
     dirs, all_entries = build_tree(all_objects, settings, client)
+    file_count = sum(1 for obj in all_entries.values() if not obj.is_dir)
 
-    print("Resolving content types...")
-    resolve_content_types(all_entries.values())
+    with _progress() as progress:
+        task = progress.add_task("Resolving content types...", total=file_count)
+        resolve_content_types(all_entries.values(), on_progress=lambda: progress.advance(task))
 
-    print("Computing directory sizes...")
+    console.print("Computing directory sizes...")
     for dir_obj in dirs.values():
         dir_obj.compute_totals()
 
@@ -121,10 +142,9 @@ def main(
         try:
             root_dir = dirs[PurePosixPath(settings.s3_bucket_prefix)]
         except KeyError as e:
-            typer.echo(
-                f"Error: configured S3_BUCKET_PREFIX {settings.s3_bucket_prefix!r} "
-                "not found among listed objects.",
-                err=True,
+            error_console.print(
+                f"[red]Error:[/red] configured S3_BUCKET_PREFIX {settings.s3_bucket_prefix!r} "
+                "not found among listed objects."
             )
             raise typer.Exit(code=EXIT_S3_ERROR) from e
     else:
@@ -132,9 +152,13 @@ def main(
         root_dir.children = [x for x in all_entries.values() if x.parent == PurePosixPath(".")]
         _ = root_dir.compute_totals()
 
-    render_directory(root_dir, tmpl, settings, client, dry_run, output_dir)
+    try:
+        render_directory(root_dir, tmpl, settings, client, dry_run, output_dir)
+    except (MinioException, HTTPError) as e:
+        error_console.print(f"[red]Error:[/red] failed to upload index for {root_dir.path or '/'}: {e}")
+        raise typer.Exit(code=EXIT_S3_ERROR) from e
 
-    print("All directory indexes generated successfully.")
+    console.print("All directory indexes generated successfully.")
 
 
 if __name__ == "__main__":
