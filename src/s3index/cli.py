@@ -41,7 +41,7 @@ def render_all(
     dir_objs: Collection[S3Object],
     template: Template,
     settings: Settings,
-    client: Minio,
+    client: Optional[Minio],
     dry_run: bool,
     output_dir: Optional[Path],
 ) -> None:
@@ -61,9 +61,10 @@ def render_all(
                 future.result()
             except (MinioException, HTTPError) as e:
                 dir_obj = futures[future]
-                error_console.print(f"[red]Error:[/red] failed to upload index for {dir_obj.path or '/'}: {e}")
                 for f in futures:
                     f.cancel()
+                progress.stop()
+                error_console.print(f"[red]Error:[/red] failed to upload index for {dir_obj.path or '/'}: {e}")
                 raise typer.Exit(code=EXIT_S3_ERROR) from e
             progress.advance(task)
 

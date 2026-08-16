@@ -26,7 +26,7 @@ def render_directory(
     dir_obj: S3Object,
     template: Template,
     settings: Settings,
-    client: Minio,
+    client: Minio | None,
     dry_run: bool = False,
     output_dir: Path | None = None,
 ) -> None:
@@ -64,4 +64,5 @@ def render_directory(
         write_local_index(output_dir, str(index_path), html)
         return
 
+    assert client is not None, "a real S3 upload needs a Minio client"
     upload_index(client, settings.s3_bucket_name, str(index_path), html)
