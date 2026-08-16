@@ -8,6 +8,8 @@ from humanize import naturalsize
 from magika import Magika
 from minio import Minio
 from minio.datatypes import Object
+from minio.error import MinioException
+from urllib3.exceptions import HTTPError
 from yarl import URL
 
 from s3index.settings import Settings
@@ -75,7 +77,7 @@ class S3Object:
             magika = Magika()
             result = magika.identify_bytes(data)
             self._content_type = result.output.mime_type if result and result.output else "application/octet-stream"
-        except Exception:
+        except (MinioException, HTTPError):
             self._content_type = "unknown"
         return self._content_type
 

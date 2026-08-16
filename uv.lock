@@ -765,6 +765,7 @@ dependencies = [
     { name = "magika" },
     { name = "minio" },
     { name = "pydantic-settings" },
+    { name = "urllib3" },
     { name = "yarl" },
 ]
 
@@ -780,6 +781,7 @@ requires-dist = [
     { name = "magika", specifier = ">=0.6.2" },
     { name = "minio", specifier = ">=7.2.15" },
     { name = "pydantic-settings", specifier = ">=2.8.1" },
+    { name = "urllib3", specifier = ">=2.3.0" },
     { name = "yarl", specifier = ">=1.18.3" },
 ]
 

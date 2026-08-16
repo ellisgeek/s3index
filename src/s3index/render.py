@@ -1,11 +1,17 @@
 """Jinja2 environment setup and directory-index rendering."""
 
+import sys
+
 from jinja2 import Environment, PackageLoader, Template, select_autoescape
 from minio import Minio
+from minio.error import MinioException
+from urllib3.exceptions import HTTPError
 
 from s3index.models import S3Object
 from s3index.settings import Settings
 from s3index.storage import upload_index
+
+EXIT_S3_ERROR = 2
 
 
 def build_environment() -> Environment:
@@ -43,4 +49,8 @@ def render_directory(dir_obj: S3Object, template: Template, settings: Settings, 
     index_path = f"{dir_obj.path}/{settings.index_name}" if not is_root else settings.index_name
 
     print(f"Uploading index for {dir_obj.path or '/'} -> {index_path}")
-    upload_index(client, settings.s3_bucket_name, str(index_path), html)
+    try:
+        upload_index(client, settings.s3_bucket_name, str(index_path), html)
+    except (MinioException, HTTPError) as e:
+        print(f"Error: failed to upload index for {dir_obj.path or '/'}: {e}", file=sys.stderr)
+        raise SystemExit(EXIT_S3_ERROR) from e
