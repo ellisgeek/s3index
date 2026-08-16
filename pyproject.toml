@@ -10,6 +10,7 @@ dependencies = [
     "magika>=0.6.2",
     "minio>=7.2.15",
     "pydantic-settings>=2.8.1",
+    "questionary>=2.1.1",
     "rich>=15.0.0",
     "typer>=0.27.1",
     "urllib3>=2.3.0",

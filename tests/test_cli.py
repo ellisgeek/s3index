@@ -9,7 +9,7 @@ from conftest import make_object
 from minio.error import S3Error
 from pydantic import BaseModel, ValidationError
 
-from s3index.cli import main, render_all, summarize_results
+from s3index.cli import USE_CURRENT_LEVEL, _pick_bucket, _pick_prefix, main, render_all, summarize_results
 from s3index.models import S3Object
 from s3index.render import RenderResult, build_environment
 
@@ -153,3 +153,108 @@ def test_main_renders_with_a_configured_prefix_and_applies_overrides(settings, t
 
     assert settings.s3_bucket_name == "overridden-bucket"
     assert (tmp_path / "index.html").exists()
+
+
+def test_pick_bucket_returns_the_selected_bucket_name():
+    bucket = MagicMock()
+    bucket.name = "chosen-bucket"
+    with (
+        patch("s3index.cli.list_buckets", return_value=[bucket]),
+        patch("s3index.cli.questionary.select") as mock_select,
+    ):
+        mock_select.return_value.ask.return_value = "chosen-bucket"
+        assert _pick_bucket(MagicMock()) == "chosen-bucket"
+
+
+def test_pick_bucket_exits_when_listing_fails():
+    error = S3Error("AccessDenied", "not entitled", None, None, None, MagicMock())
+    with patch("s3index.cli.list_buckets", side_effect=error), pytest.raises(typer.Exit) as exc_info:
+        _pick_bucket(MagicMock())
+
+    assert exc_info.value.exit_code == 2
+
+
+def test_pick_bucket_exits_when_nothing_is_selected():
+    with (
+        patch("s3index.cli.list_buckets", return_value=[]),
+        patch("s3index.cli.questionary.select") as mock_select,
+    ):
+        mock_select.return_value.ask.return_value = None
+        with pytest.raises(typer.Exit) as exc_info:
+            _pick_bucket(MagicMock())
+
+    assert exc_info.value.exit_code == 1
+
+
+def test_pick_prefix_returns_empty_when_no_subfolders_exist():
+    with patch("s3index.cli.list_top_level_prefixes", return_value=[]):
+        assert _pick_prefix(MagicMock(), "bucket") == ""
+
+
+def test_pick_prefix_stops_when_use_current_level_is_chosen():
+    with (
+        patch("s3index.cli.list_top_level_prefixes", return_value=["a/"]),
+        patch("s3index.cli.questionary.select") as mock_select,
+    ):
+        mock_select.return_value.ask.return_value = USE_CURRENT_LEVEL
+        assert _pick_prefix(MagicMock(), "bucket") == ""
+
+
+def test_pick_prefix_descends_into_chosen_subfolders():
+    listings = {"": ["a/"], "a/": ["a/b/"]}
+    with (
+        patch("s3index.cli.list_top_level_prefixes", side_effect=lambda c, b, p: listings.get(p, [])),
+        patch("s3index.cli.questionary.select") as mock_select,
+    ):
+        mock_select.return_value.ask.side_effect = ["a/", USE_CURRENT_LEVEL]
+        assert _pick_prefix(MagicMock(), "bucket") == "a/"
+
+
+def test_pick_prefix_exits_when_listing_fails():
+    error = S3Error("AccessDenied", "not entitled", None, None, None, MagicMock())
+    with patch("s3index.cli.list_top_level_prefixes", side_effect=error), pytest.raises(typer.Exit) as exc_info:
+        _pick_prefix(MagicMock(), "bucket")
+
+    assert exc_info.value.exit_code == 2
+
+
+def test_pick_prefix_exits_when_nothing_is_selected():
+    with (
+        patch("s3index.cli.list_top_level_prefixes", return_value=["a/"]),
+        patch("s3index.cli.questionary.select") as mock_select,
+    ):
+        mock_select.return_value.ask.return_value = None
+        with pytest.raises(typer.Exit) as exc_info:
+            _pick_prefix(MagicMock(), "bucket")
+
+    assert exc_info.value.exit_code == 1
+
+
+def test_main_interactive_flag_prompts_for_bucket_and_prefix(settings):
+    settings.s3_bucket_name = ""
+    settings.s3_bucket_prefix = ""
+    with (
+        patch("s3index.cli.Settings", return_value=settings),
+        patch("s3index.cli.Minio"),
+        patch("s3index.cli._pick_bucket", return_value="picked-bucket") as mock_pick_bucket,
+        patch("s3index.cli._pick_prefix", return_value="picked-prefix/") as mock_pick_prefix,
+        patch("s3index.cli.list_all_objects", return_value=[make_object("picked-prefix/a.txt")]),
+    ):
+        main(interactive=True, dry_run=True)
+
+    mock_pick_bucket.assert_called_once()
+    mock_pick_prefix.assert_called_once()
+    assert settings.s3_bucket_name == "picked-bucket"
+    assert settings.s3_bucket_prefix == "picked-prefix/"
+
+
+def test_main_errors_when_bucket_is_still_unset_after_declining_to_prompt(settings):
+    settings.s3_bucket_name = ""
+    with (
+        patch("s3index.cli.Settings", return_value=settings),
+        patch("s3index.cli.Minio"),
+        pytest.raises(typer.Exit) as exc_info,
+    ):
+        main(interactive=False)
+
+    assert exc_info.value.exit_code == 1

@@ -1,11 +1,13 @@
 """Orchestrates listing S3 objects and generating directory-index pages."""
 
+import sys
 from collections import Counter
 from collections.abc import Collection
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path, PurePosixPath
 from typing import Annotated, Optional
 
+import questionary
 import typer
 from jinja2 import Template
 from minio import Minio
@@ -18,10 +20,11 @@ from urllib3.exceptions import HTTPError
 from s3index.models import S3Object, build_tree, resolve_content_types
 from s3index.render import RenderResult, build_environment, render_directory
 from s3index.settings import Settings
-from s3index.storage import list_all_objects
+from s3index.storage import list_all_objects, list_buckets, list_top_level_prefixes
 
 EXIT_CONFIG_ERROR = 1
 EXIT_S3_ERROR = 2
+USE_CURRENT_LEVEL = "(use this level)"
 
 app = typer.Typer(pretty_exceptions_enable=False)
 console = Console()
@@ -82,6 +85,46 @@ def summarize_results(results: list[RenderResult]) -> str:
     return f"Uploaded {counts[RenderResult.UPLOADED]} indexes, skipped {counts[RenderResult.SKIPPED]} unchanged."
 
 
+def _pick_bucket(client: Minio) -> str:
+    """Prompt for a bucket name via an arrow-key menu."""
+    try:
+        buckets = list_buckets(client)
+    except (MinioException, HTTPError) as e:
+        error_console.print(f"[red]Error:[/red] could not list buckets: {e}")
+        raise typer.Exit(code=EXIT_S3_ERROR) from e
+
+    choice = questionary.select("Select a bucket:", choices=[b.name for b in buckets]).ask()
+    if choice is None:
+        error_console.print("[red]Error:[/red] no bucket selected.")
+        raise typer.Exit(code=EXIT_CONFIG_ERROR)
+    return choice
+
+
+def _pick_prefix(client: Minio, bucket_name: str) -> str:
+    """Prompt for a starting prefix, browsing one subfolder level at a time."""
+    prefix = ""
+    while True:
+        try:
+            subdirs = list_top_level_prefixes(client, bucket_name, prefix)
+        except (MinioException, HTTPError) as e:
+            error_console.print(f"[red]Error:[/red] could not list '{prefix or '/'}': {e}")
+            raise typer.Exit(code=EXIT_S3_ERROR) from e
+
+        if not subdirs:
+            return prefix
+
+        choice = questionary.select(
+            f"Browse into a subfolder of '{prefix or '/'}':",
+            choices=[USE_CURRENT_LEVEL, *subdirs],
+        ).ask()
+        if choice is None:
+            error_console.print("[red]Error:[/red] no prefix selected.")
+            raise typer.Exit(code=EXIT_CONFIG_ERROR)
+        if choice == USE_CURRENT_LEVEL:
+            return prefix
+        prefix = choice
+
+
 @app.command()
 def main(
     s3_endpoint: Annotated[Optional[str], typer.Option(help="S3 endpoint hostname.")] = None,
@@ -94,6 +137,13 @@ def main(
     dry_run: Annotated[bool, typer.Option(help="Build and render indexes without writing them anywhere.")] = False,
     output_dir: Annotated[
         Optional[Path], typer.Option(help="Write index files to this local directory instead of uploading them.")
+    ] = None,
+    interactive: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--interactive/--no-interactive",
+            help="Prompt for a bucket/prefix when unset. Defaults to on in a terminal if no bucket is configured.",
+        ),
     ] = None,
 ) -> None:
     """Generate static HTML directory-index pages for an S3-compatible bucket."""
@@ -128,6 +178,17 @@ def main(
         access_key=settings.s3_access_key,
         secret_key=settings.s3_secret_key,
     )
+
+    should_prompt = interactive if interactive is not None else (not settings.s3_bucket_name and sys.stdout.isatty())
+    if should_prompt:
+        if not settings.s3_bucket_name:
+            settings.s3_bucket_name = _pick_bucket(client)
+        if not settings.s3_bucket_prefix:
+            settings.s3_bucket_prefix = _pick_prefix(client, settings.s3_bucket_name)
+
+    if not settings.s3_bucket_name:
+        error_console.print("[red]Error:[/red] missing config: S3_BUCKET_NAME")
+        raise typer.Exit(code=EXIT_CONFIG_ERROR)
 
     env = build_environment()
     tmpl = env.get_template(settings.template or "default.html")

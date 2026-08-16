@@ -14,6 +14,11 @@ Use `--dry-run` to build and render the indexes without writing them
 anywhere, or `--output-dir <path>` to write them to a local directory
 instead of uploading them.
 
+If `S3_BUCKET_NAME` is not set and you are running in a terminal, `s3index`
+prompts you to pick a bucket (and, optionally, a starting prefix) instead of
+failing. Pass `--interactive`/`--no-interactive` to force this on or off.
+Credentials are never prompted for; set them in `.env` first.
+
 ## Development
 
 Install the git hooks once, after cloning:
@@ -49,6 +54,5 @@ over running `s3index.py` directly during development.
 
 ## TODOs
 
-- Interactive mode: pick a bucket and starting prefix without a flag or env var.
 - Packaging: installable entrypoint (`uv tool install .`), instead of `uv run s3index.py`.
 - CI/CD: run the checks above on every push and pull request.
