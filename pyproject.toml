@@ -1,6 +1,6 @@
 [project]
 name = "s3index"
-version = "0.1.0"
+version = "2026.08.0"
 description = "A simple script to generate index files for S3 Buckets"
 readme = "README.md"
 requires-python = ">=3.10, <3.14"
@@ -18,8 +18,12 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "bump-my-version>=1.5.1",
+    "commitizen>=4.17.0",
+    "prek>=0.4.13",
     "pytest>=9.1.1",
-    "ruff>=0.9.9",
+    "ruff>=0.16.3",
+    "ty>=0.0.72",
 ]
 
 [tool.pytest.ini_options]
@@ -31,3 +35,26 @@ line-length=120
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I"]
 fixable = ["ALL"]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+
+[tool.bumpversion]
+current_version = "2026.08.0"
+parse = """(?x)
+    (?P<release>
+        (?:[1-9][0-9]{3})\\.  # YYYY.
+        (?:1[0-2]|0[1-9])     # 0M
+    )
+    \\.(?P<micro>0|[1-9]\\d*)
+"""
+serialize = ["{release}.{micro}"]
+commit = true
+tag = true
+tag_name = "v{new_version}"
+
+[tool.bumpversion.parts.release]
+calver_format = "{YYYY}.{0M}"
+
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
