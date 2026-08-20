@@ -37,11 +37,12 @@ smoke: build
 safe-run *args:
     python3 scripts/safe_run.py {{ args }}
 
-# Regenerate CHANGELOG.md from Conventional Commit history and stage it.
-changelog:
-    cz changelog
+# Regenerate CHANGELOG.md under the exact version about to be released, then
+# bump the CalVer version, commit, and tag it.
+release:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    next_version="$(bump-my-version show --increment micro new_version)"
+    cz changelog --unreleased-version "v${next_version}"
     git add CHANGELOG.md
-
-# Bump the CalVer version, commit, and tag the release.
-release: changelog
-    bump-my-version bump micro --allow-dirty
+    bump-my-version bump --allow-dirty --new-version "${next_version}"

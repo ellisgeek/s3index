@@ -53,13 +53,12 @@ during development.
 
 ### Releasing
 
-1. `uv run just changelog` regenerates and stages `CHANGELOG.md`. Review the
-   staged diff.
-2. `uv run just release` bumps the version and commits the version bump
-   together with the staged changelog, then tags the release. Versions
-   follow CalVer (`YYYY.MM.MICRO`); `micro` resets to `0` automatically at
-   the start of a new month.
-3. `git push --follow-tags` pushes the commit and the new tag.
+1. `uv run just release` regenerates `CHANGELOG.md` under the version about
+   to be released, then bumps the version and commits it together with the
+   changelog, then tags the release. Versions follow CalVer
+   (`YYYY.MM.MICRO`); `micro` resets to `0` automatically at the start of a
+   new month.
+2. `git push --follow-tags` pushes the commit and the new tag.
 
 Pushing a `v*` tag triggers the release workflow, which builds the sdist and
 wheel and publishes them to a GitHub Release.
